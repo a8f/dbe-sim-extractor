@@ -1,0 +1,12 @@
+{
+  "name": "dbe-sim-extractor",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Optional YGOPRO to Dueling Book Enhancer rules development tool",
+  "engines": { "node": ">=22.13.0" },
+  "scripts": {
+    "test": "node --test checks/*.check.mjs",
+    "setup-hooks": "git config core.hooksPath .githooks"
+  }
+}

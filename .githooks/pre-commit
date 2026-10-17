@@ -1,0 +1,2 @@
+#!/bin/sh
+exec node --test checks/repository-boundary.check.mjs

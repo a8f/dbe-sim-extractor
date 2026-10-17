@@ -1,0 +1,15 @@
+# Downloaded websites/ruling JSON, external reviews and generated output stay local.
+/.cache/
+/downloads/
+/data/
+/reviews/
+/reports/
+*.reviews.json
+*.extraction.json
+*.cdb
+*.har
+*.tmp
+# Only generic format definitions and the package manifest belong here as JSON.
+*.json
+!/package.json
+!/rulesets/*.json

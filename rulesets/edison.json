@@ -1,0 +1,21 @@
+{
+  "id": "edison",
+  "name": "Edison — April 2010 TCG historical rules",
+  "historical": true,
+  "masterRule": "Original Master Rule era (MR1); April 2010 TCG rulings",
+  "policy": "April 2010 TCG historical baseline using edisonformat.com card rulings. Sourced corrections override modern simulator behavior; later community revisions are reported separately.",
+  "duelRequirements": {
+    "ignitionEffectPriority": true,
+    "firstTurnDraw": true,
+    "fieldSpellPolicy": "One face-up Field Spell across both players",
+    "modernTriggerLocationRules": false
+  },
+  "enforcement": "The extractor does not configure a simulator or enforce duel-wide rules. Players and the native Edison duel handle priority, chains and global rules. Historical exports require a per-card review and representable behavior.",
+  "sources": [
+    "https://www.edisonformat.com/uploads/1/3/4/1/134149181/yugioh5dsofficialrulebook.pdf",
+    "https://www.edisonformat.com/priority.html",
+    "https://edisonformat.net/rules/compendium/First-Turn-Draw",
+    "https://edisonformat.net/rules/compendium/Single-Field-Spell",
+    "https://edisonformat.net/rules/compendium/Trigger-Locations"
+  ]
+}
