@@ -29,11 +29,17 @@ From this repository (replace the placeholders):
 # Inspect installed simulator behavior
 node extract-card-rules.mjs <passcode>
 
+# Look up a card name in the local simulator database
+node extract-card-rules.mjs "Example Recruiter"
+
 # Load reviewed mappings from the separate card-rules checkout
 node extract-card-rules.mjs <passcode> --ruleset edison --reviews ../personal-rules/edison.reviews.json
 
 # Write to any existing list; infers edison.reviews.json beside edison.json
 node extract-card-rules.mjs <passcode> --ruleset edison --write ../personal-rules/edison.json
+
+# Names work with the same historical review and write workflow
+node extract-card-rules.mjs --name "Example Recruiter" --ruleset edison --write ../personal-rules/edison.json
 ```
 
 As an extension submodule, prepend `card-rule-extractor/` to the command.
@@ -41,6 +47,17 @@ Destinations and `--reviews` paths are relative to the current working directory
 There is no hardcoded output list or card-rules checkout dependency. Multiple
 printed passcodes can be separated by spaces or commas. Leading zeroes are
 preserved in JSON; script filenames use the numerical ID.
+
+Quoted names and printed passcodes can be mixed in one command. Quote each name
+separately; comma-separated batches apply only to numeric IDs, so commas inside
+card names are preserved. Repeatable `--name` explicitly forces name lookup,
+including for names made entirely of digits. Name lookup uses only the selected
+installation's read-only `cards.cdb`, with no catalog download or bundled data.
+Matching ignores case, repeated whitespace and typographic apostrophe/dash
+variants. Full names take precedence; a partial name is accepted only when unique.
+Ambiguous names report candidate names/passcodes and prevent the entire batch
+write. A miss also prevents writes. Name/ID duplicates resolve to one extraction;
+the report and generated rules always use canonical database names and passcodes.
 
 `--simulator <directory>` accepts an application root, YGOPRO directory or script
 directory. The default is `C:\Yu-Gi-Oh! The Dawn of a New Era\YGOPRO`. The tool

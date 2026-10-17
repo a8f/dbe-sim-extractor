@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import core from "./schema-3.mjs";
 import { applyRuleset, assessRuleset, assertDestination, profile, loadReviews } from "./rulesets.mjs";
 import { researchRulings, clearRulingsCache } from "./research-rulings.mjs";
+import { resolveCardInputs } from "./card-lookup.mjs";
 
 export const defaultSimulator = "C:\\Yu-Gi-Oh! The Dawn of a New Era\\YGOPRO";
 
@@ -114,7 +115,9 @@ export async function extractCards(ids, simulator = defaultSimulator, ruleset = 
       return { passcode: id, name: row.name, text: row.desc };
     };
     const results = [];
-    for (const id of [...new Set(ids.map(passcode))]) {
+    for (const selected of resolveCardInputs(ids, db, passcode)) {
+      if (!selected.passcode) { results.push(selected); continue; }
+      const id = selected.passcode;
       const result = { passcode: id, status: "unsupported" };
       try {
         Object.assign(result, lookup(id));
@@ -187,27 +190,29 @@ export async function main(args) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--help" || arg === "-h") {
-      console.log("Usage: node card-rule-extractor/extract-card-rules.mjs <passcode(s)> [--simulator <directory>] [--ruleset edison|simulator] [--write <existing.json>] [--reviews <external.reviews.json>] [--research] [--refresh-rulings] [--clear-cache]\nWrites require --ruleset. Historical mappings come only from external reviews (inferred beside the write destination). Edison runs download rulings on cache miss and keep them indefinitely. --clear-cache can be used alone; --refresh-rulings fetches new copies. Requires Node 22.13+.");
+      console.log('Usage: node card-rule-extractor/extract-card-rules.mjs <passcode(s) or "card name(s)"> [--name "card name"] [--simulator <directory>] [--ruleset edison|simulator] [--write <existing.json>] [--reviews <external.reviews.json>] [--research] [--refresh-rulings] [--clear-cache]\nQuote each card name separately. Exact names ignore case and spacing; unique partial names also work. Ambiguous names list candidate passcodes and prevent writes. --name is repeatable and forces name lookup for numeric-only names or names containing commas. Writes require --ruleset. Edison runs cache downloaded rulings indefinitely. Requires Node 22.13+.');
       return;
     }
     if (arg === "--research") research = true;
     else if (arg === "--clear-cache") clearCache = true;
     else if (arg === "--refresh-rulings") { refreshRulings = true; research = true; }
-    else if (arg === "--simulator" || arg === "--write" || arg === "--ruleset" || arg === "--reviews") {
+    else if (arg === "--simulator" || arg === "--write" || arg === "--ruleset" || arg === "--reviews" || arg === "--name") {
       const value = args[++i];
       if (!value || value.startsWith("--")) throw new Error("Missing value for " + arg);
       if (arg === "--simulator") simulator = value;
       else if (arg === "--ruleset") { profile(value); ruleset = value; }
       else if (arg === "--reviews") reviewsPath = path.resolve(value);
+      else if (arg === "--name") ids.push({ name: value });
       else { if (output) throw new Error("Choose one write destination"); output = path.resolve(value); }
     } else if (arg.startsWith("-")) throw new Error("Unknown option: " + arg);
-    else ids.push(...arg.split(",").map(passcode));
+    else if (/^[\d,]+$/.test(arg)) ids.push(...arg.split(",").map(passcode));
+    else ids.push(arg);
   }
   if (clearCache) {
     const removed = await clearRulingsCache();
     if (!ids.length && !output && !reviewsPath && !ruleset && !research) { console.log(JSON.stringify({ cacheFilesRemoved: removed })); return; }
   }
-  if (!ids.length) throw new Error("Supply at least one printed card ID. Use --help for usage.");
+  if (!ids.length) throw new Error("Supply at least one printed card ID or card name. Use --help for usage.");
   if (output && !ruleset) throw new Error("Writes require --ruleset edison or --ruleset simulator; the destination does not establish historical correctness.");
   const selected = ruleset || "simulator";
   if (reviewsPath && selected !== "edison") throw new Error("--reviews requires a historical ruleset");

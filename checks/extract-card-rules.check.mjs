@@ -142,6 +142,22 @@ test("SQLite + Lua extraction and CLI batch writing work without the installed s
   assert.equal(preview.status, 0, preview.stderr);
   assert.equal(JSON.parse(preview.stdout).cards[0].status, "supported");
   assert.equal(await readFile(filename, "utf8"), original);
+  for (const args of [["example recruiter"], ["--name", "Example Recruiter"], ["Example Recruiter", "09000001"]]) {
+    const named = run(args);
+    assert.equal(named.status, 0, named.stderr);
+    const report = JSON.parse(named.stdout);
+    assert.equal(report.cards.length, 1);
+    assert.equal(report.cards[0].passcode, source.passcode);
+    assert.equal(report.cards[0].name, source.name);
+  }
+  for (const name of ["Example", "Unknown Example"]) {
+    const rejected = run(["09000001", "--name", name, "--write", filename]);
+    assert.equal(rejected.status, 1);
+    const report = JSON.parse(rejected.stdout);
+    assert.equal(report.cards[1].status, "unsupported");
+    assert.match(report.write.error, /every requested/);
+    assert.equal(await readFile(filename, "utf8"), original, "ambiguous or missing names prevent every batch write");
+  }
   const failed = run(["09000001,09000003", "--write", filename]);
   assert.equal(failed.status, 1);
   assert.match(JSON.parse(failed.stdout).write.error, /every requested/);
@@ -245,7 +261,7 @@ test("historical reconstruction survives incompatible modern Lua and writes corr
     new Response("<div>EXAMPLE RECRUITER<br>Example historical ruling</div><div>EXAMPLE TARGET</div>") :
     new Response(JSON.stringify({ id: 9000001, name: source.name, Rulings: { Edison: "Example revised ruling" } })), { cacheDirectory });
   const cli = fileURLToPath(new URL("../extract-card-rules.mjs", import.meta.url));
-  const invoked = spawnSync(process.execPath, [cli, source.passcode, "--simulator", sim, "--ruleset", "edison", "--write", filename], {
+  const invoked = spawnSync(process.execPath, [cli, "--name", source.name.toLowerCase(), "--simulator", sim, "--ruleset", "edison", "--write", filename], {
     encoding: "utf8", env: { ...process.env, DBE_SIM_EXTRACTOR_CACHE: cacheDirectory }
   });
   assert.equal(invoked.status, 0, invoked.stderr);
