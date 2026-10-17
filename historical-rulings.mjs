@@ -7,6 +7,25 @@ export function compileHistoricalRule(source, review) {
     throw new Error("Historical mapping is missing its review, sources or matching card identity");
   }
   const effect = review.effect;
+  if (effect?.kind === "summon-trigger-search-or-destroy") {
+    if (Object.keys(effect).some(key => !["kind", "monsterNamePrefixes", "monsterCards", "destructionMinimum", "searchAbsentFaceUpCards"].includes(key)) || review.corrections?.length) {
+      throw new Error("Historical choice effect has unsupported fields or corrections");
+    }
+    const rule = {
+      id: "ygopro-" + source.passcode,
+      card: { passcode: source.passcode, name: review.name },
+      label: "On summon: search a monster or destroy Spells/Traps",
+      requires: { sourceZone: "monster", ownTurn: false, phases: ["DP", "SP", "M1", "BP", "M2", "EP"], trigger: "normal-or-special-summon" },
+      activation: [],
+      resolution: [{ op: "choose-search-or-destroy",
+        ...(effect.monsterNamePrefixes !== undefined ? { monsterNamePrefixes: structuredClone(effect.monsterNamePrefixes) } : {}),
+        ...(effect.monsterCards !== undefined ? { monsterCards: structuredClone(effect.monsterCards) } : {}),
+        ...(effect.destructionMinimum !== undefined ? { destructionMinimum: effect.destructionMinimum } : {}),
+        searchAbsentFaceUpCards: structuredClone(effect.searchAbsentFaceUpCards) }]
+    };
+    core.validateAutomationList({ schemaVersion: 3, id: "historical", name: "Historical", version: "1.0.0", formats: ["er", "eu"], rules: [rule] });
+    return rule;
+  }
   if (effect?.kind !== "graveyard-ignition-banish-summon-from-deck") throw new Error("Historical effect needs a supported generic adapter: " + effect?.kind);
   if (Object.keys(effect).some(key => !["kind", "summon", "positions"].includes(key))) throw new Error("Historical effect has unsupported fields; extend the generic adapter before exporting");
   const rule = {
@@ -31,12 +50,19 @@ export function compileHistoricalRule(source, review) {
 }
 
 export function describeAdaptation(simulatorRule, historicalRule, review) {
+  const changes = (review.corrections || []).map(correction => correction.summary);
+  const installed = simulatorRule?.resolution[0], historical = historicalRule.resolution[0];
+  if (installed?.op === "choose-search-or-destroy" && historical.op === installed.op) {
+    if ((installed.destructionMinimum || 0) !== (historical.destructionMinimum || 0)) changes.push("Historical review changes the destruction selection minimum from " + (installed.destructionMinimum || 0) + " to " + (historical.destructionMinimum || 0) + ".");
+    if (JSON.stringify(installed.monsterCards) !== JSON.stringify(historical.monsterCards) || JSON.stringify(installed.monsterNamePrefixes) !== JSON.stringify(historical.monsterNamePrefixes)) changes.push("Use the historically reviewed monster selector instead of the simulator archetype snapshot.");
+    if (JSON.stringify(installed.searchAbsentFaceUpCards) !== JSON.stringify(historical.searchAbsentFaceUpCards)) changes.push("Apply historically reviewed face-up search prohibitions.");
+  }
   return {
     mode: simulatorRule ? "rulings-correction" : "rulings-reconstruction",
     policy: "April 2010 historical baseline; edisonformat.com card rulings",
     sources: review.sources,
     reviewedOn: review.reviewedOn,
-    changes: (review.corrections || []).map(correction => correction.summary),
+    changes,
     simulatorDiffers: JSON.stringify(simulatorRule) !== JSON.stringify(historicalRule),
     manualResponsibilities: review.manualResponsibilities || [],
     comparisonSources: review.comparisonSources || []

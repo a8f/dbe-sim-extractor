@@ -59,6 +59,12 @@ Ambiguous names report candidate names/passcodes and prevent the entire batch
 write. A miss also prevents writes. Name/ID duplicates resolve to one extraction;
 the report and generated rules always use canonical database names and passcodes.
 
+Programmatic callers may opt into ranked typo matching with
+`extractCards(inputs, simulator, ruleset, { fuzzy: true, ...options })`. Ambiguous
+results contain scored candidates; the caller decides whether to prompt or choose
+the best result. The personal-list wrapper provides interactive/headless handling.
+The extractor CLI retains its conservative exact/unique-partial behavior.
+
 `--simulator <directory>` accepts an application root, YGOPRO directory or script
 directory. The default is `C:\Yu-Gi-Oh! The Dawn of a New Era\YGOPRO`. The tool
 reads `cards.cdb` read-only, card Lua and `script/utility.lua`. It never executes
@@ -92,6 +98,41 @@ cost followed by a Deck summon with independent source/target selectors and ATK/
 choices. Corrections cover face-up activation prohibitions and destruction of a
 Deck copy if no monster zone remains at resolution. Historical compilation can
 correct or reconstruct the effect independently of incompatible modern Lua.
+
+It also supports `summon-trigger-search-or-destroy`: a manually timed
+Normal/Special Summon trigger with no cost, a choice at activation, and either
+one matching monster added from Deck or non-targeting Spell/Trap destruction
+chosen at resolution. External mappings supply either `monsterNamePrefixes`
+(each ends with a space) or explicit `monsterCards` selectors, plus
+`searchAbsentFaceUpCards`. Optional `destructionMinimum` is 0 or 1 (default 0).
+The extension handles Deck selection,
+native reveal/shuffle, resolution-time face-up monster counts excluding the
+source, and own-card movements. Opponents move their selected field cards using
+their own native controls. Timing, negation, protection, replacement effects and
+simultaneous destruction consequences remain manual. No identity is built into
+this adapter. Reload the updated extension before importing these definitions.
+
+The Lua translator now recognizes the complete legacy summon-choice control-flow
+pattern: optional Normal/Special Summon triggers including the Damage Step,
+mode chosen at activation, a self-excluding face-up archetype count at resolution,
+non-targeting Spell/Trap destruction, and a revealed one-monster Deck search.
+Helper/local variable renaming, comments and decimal/hex archetype constants are
+accepted. Additional costs, restrictions, operations or effects still fail closed.
+This is a bounded pattern translator, not an arbitrary Lua interpreter.
+
+`IsSetCard` membership is expanded from the selected `cards.cdb` into explicit
+printed-passcode/name selectors. Both legacy packed integers and newer little-endian
+archetype BLOBs are supported, including family subtype bits. No real identities,
+archetype codes or name prefixes are embedded in the translator. The Lua's
+destruction selection minimum is retained rather than silently changing it.
+`simulatorAnalysis` reports the adapter and manual responsibilities. The membership
+list is a database snapshot; changed names/types/archetypes, `IsAbleToHand`, chain
+legality and replacement effects still require manual adjudication.
+
+Edison extraction continues to require an external approved review. When the Lua
+translates, the report retains `simulatorRule` and describes historical changes to
+the selector, selection minimum and search prohibitions. Reviews can also
+reconstruct behavior when the installed script does not match a supported pattern.
 
 Reports cite the external review and explain changes from the simulator. The
 writer recompiles the external mapping and compares the result before saving;

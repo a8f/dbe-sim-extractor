@@ -35,6 +35,24 @@ function reviewFixture() {
     manualResponsibilities: ["Example timing remains manual"] };
 }
 
+test("external summon-choice review compiles generically, passes schema, and is rechecked at merge", () => {
+  const review = { status: "approved", name: source.name, reviewedOn: "2026-10-17", sources: ["https://example.test/historical"],
+    effect: { kind: "summon-trigger-search-or-destroy", monsterNamePrefixes: ["Example Family "],
+      searchAbsentFaceUpCards: [{ passcode: "09000009", name: "Example Blocker" }] } };
+  const rule = compileHistoricalRule(source, review);
+  assert.equal(rule.requires.sourceZone, "monster"); assert.equal(rule.requires.ownTurn, false);
+  assert.deepEqual(rule.activation, []); assert.equal(rule.resolution[0].op, "choose-search-or-destroy");
+  const result = { ...source, status: "supported", rule };
+  const destination = { ...list(), formats: ["er", "eu"] };
+  assert.doesNotThrow(() => mergeRules(destination, [result], "edison", { [source.passcode]: review }));
+  result.rule.resolution[0].monsterNamePrefixes.push("Unreviewed ");
+  assert.throws(() => mergeRules(destination, [result], "edison", { [source.passcode]: review }), /does not match/);
+  for (const patch of [{ extra: true }, { monsterNamePrefixes: [] }, { monsterNamePrefixes: ["Without boundary"] }]) {
+    assert.throws(() => compileHistoricalRule(source, { ...review, effect: { ...review.effect, ...patch } }));
+  }
+  assert.throws(() => compileHistoricalRule(source, { ...review, corrections: reviewFixture().corrections }), /unsupported/);
+});
+
 async function sandbox(t) {
   const dir = await mkdtemp(path.join(tmpdir(), "dbx-extract-"));
   t.after(() => rm(dir, { recursive: true, force: true }));

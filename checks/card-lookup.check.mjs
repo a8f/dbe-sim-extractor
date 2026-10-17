@@ -14,7 +14,7 @@ function database(t) {
     [9000005, "123"], [9000006, "Duplicate Example"], [9000007, "Duplicate Example"]
   ]) insert.run(id, name);
   t.after(() => db.close());
-  return inputs => resolveCardInputs(inputs, db, passcode);
+  return (inputs, options) => resolveCardInputs(inputs, db, passcode, options);
 }
 
 test("names use exact matches before unique partial matches and preserve canonical passcodes", t => {
@@ -26,6 +26,18 @@ test("names use exact matches before unique partial matches and preserve canonic
   assert.deepEqual(resolve(["9000001", "Example Recruiter", "09000001", "wanderer"]), [{ passcode: "09000001" }, { passcode: "09000003" }]);
   assert.deepEqual(resolve([{ name: "123" }]), [{ passcode: "09000005" }]);
   assert.deepEqual(resolve(["123"]), [{ passcode: "00000123" }], "unflagged numeric input remains a passcode");
+});
+
+test("optional fuzzy matching ranks typo candidates deterministically without accepting unrelated names", t => {
+  const resolve = database(t);
+  assert.equal(resolve(["recrutier"])[0].candidateCount, 0, "default callers retain strict matching");
+  const [fuzzy] = resolve(["recrutier"], { fuzzy: true });
+  assert.equal(fuzzy.candidates[0].passcode, "09000001");
+  assert.equal(fuzzy.candidates[1].passcode, "09000002");
+  assert.ok(fuzzy.candidates.every(card => card.score > 0 && card.score <= 1));
+  assert.deepEqual(resolve(["wanderre"], { fuzzy: true }), [{ passcode: "09000003" }]);
+  assert.deepEqual(resolve(["Example Recruiter"], { fuzzy: true }), [{ passcode: "09000001" }]);
+  assert.equal(resolve(["zzxqqvv"], { fuzzy: true })[0].candidateCount, 0);
 });
 
 test("ambiguous, duplicate and missing names never silently choose a card", t => {

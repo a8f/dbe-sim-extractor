@@ -6,6 +6,7 @@ import core from "./schema-3.mjs";
 import { applyRuleset, assessRuleset, assertDestination, profile, loadReviews } from "./rulesets.mjs";
 import { researchRulings, clearRulingsCache } from "./research-rulings.mjs";
 import { resolveCardInputs } from "./card-lookup.mjs";
+import { translateSummonChoice, matchesSetcode } from "./translate-summon-choice.mjs";
 
 export const defaultSimulator = "C:\\Yu-Gi-Oh! The Dawn of a New Era\\YGOPRO";
 
@@ -30,7 +31,7 @@ export function tokens(lua) {
     }
     const comment = rest.match(/^--[^\r\n]*/);
     if (comment) { rest = rest.slice(comment[0].length); continue; }
-    const token = rest.match(/^(?:[A-Za-z_][A-Za-z_0-9]*|\d+|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|==|~=|<=|>=|\.\.|[.():,=<>+*/#;{}\[\]%&|~^-])/);
+    const token = rest.match(/^(?:0[xX][a-fA-F0-9]+|[A-Za-z_][A-Za-z_0-9]*|\d+|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|==|~=|<=|>=|\.\.|[.():,=<>+*/#;{}\[\]%&|~^-])/);
     if (!token) throw new Error("Unsupported Lua syntax near: " + rest.slice(0, 40));
     result.push(token[0]); rest = rest.slice(token[0].length);
   }
@@ -69,14 +70,16 @@ const costTemplate = `function Auxiliary.bfgcost(e,tp,eg,ep,ev,re,r,rp,chk)
   Duel.Remove(e:GetHandler(),POS_FACEUP,REASON_COST)
 end`;
 
-export function translate(lua, utility, source, lookup) {
+export function translate(lua, utility, source, lookup, options = {}) {
   const input = tokens(lua);
+  const choice = translateSummonChoice(input, source, { ...options, tokenize: tokens });
+  if (choice) return choice;
   const candidates = [];
   for (let i = 0; i < input.length; i++) {
     if (input[i] === "IsCode" && input[i + 1] === "(" && /^\d+$/.test(input[i + 2])) candidates.push(input[i + 2]);
   }
   if (candidates.length !== 1 || JSON.stringify(input) !== JSON.stringify(tokens(summonTemplate(Number(source.passcode), candidates[0])))) {
-    throw new Error("Unsupported Lua behavior: no complete match for the graveyard ignition / self-banish cost / Deck summon translator. Extra effects, conditions, restrictions and other operations need a translator and possibly a new extension adapter.");
+    throw new Error("Unsupported Lua behavior: no complete match for a supported summon-choice or graveyard ignition / self-banish cost / Deck summon translator. Extra effects, conditions, restrictions and other operations need a translator and possibly a new extension adapter.");
   }
   const helper = tokens(utility);
   const expected = tokens(costTemplate);
@@ -114,8 +117,18 @@ export async function extractCards(ids, simulator = defaultSimulator, ruleset = 
       if (!row?.name) throw new Error("Card " + id + " not found in cards.cdb texts table");
       return { passcode: id, name: row.name, text: row.desc };
     };
+    let archetypeRows;
+    const resolveSetCards = setcode => {
+      if (!archetypeRows) {
+        const statement = db.prepare("SELECT d.id, d.setcode, d.type, t.name FROM datas d JOIN texts t ON t.id = d.id ORDER BY d.id");
+        statement.setReadBigInts(true);
+        archetypeRows = statement.all();
+      }
+      return archetypeRows.filter(row => row.id > 0n && row.id < 10n ** 8n && ((row.type ?? 0n) & 1n) !== 0n && matchesSetcode(row.setcode ?? 0n, setcode))
+        .map(row => ({ passcode: passcode(String(row.id)), name: row.name }));
+    };
     const results = [];
-    for (const selected of resolveCardInputs(ids, db, passcode)) {
+    for (const selected of resolveCardInputs(ids, db, passcode, { fuzzy: options.fuzzy })) {
       if (!selected.passcode) { results.push(selected); continue; }
       const id = selected.passcode;
       const result = { passcode: id, status: "unsupported" };
@@ -127,7 +140,13 @@ export async function extractCards(ids, simulator = defaultSimulator, ruleset = 
           result.scriptSha256 = createHash("sha256").update(result.lua).digest("hex");
           const utility = await readFile(path.join(root, "script", "utility.lua"), "utf8");
           result.utilitySha256 = createHash("sha256").update(utility).digest("hex");
-          result.rule = translate(result.lua, utility, result, lookup);
+          result.rule = translate(result.lua, utility, result, lookup, { resolveSetCards });
+          if (result.rule.resolution[0].op === "choose-search-or-destroy") {
+            result.simulatorAnalysis = { adapter: "summon-trigger-search-or-destroy", archetypeMembership: "Printed-card snapshot from the selected cards.cdb",
+              manualResponsibilities: ["Confirm a legal optional summon-trigger window, including missed timing and the Damage Step.",
+                "Adjudicate IsAbleToHand, effect negation, changed names/types/archetypes, destruction protection and replacement effects manually.",
+                "The opponent moves their own selected field cards; simultaneous destruction consequences are adjudicated manually."] };
+          }
         } catch (error) { result.simulatorReason = error.message; }
         applyRuleset(ruleset, result, options.reviews);
         result.ruleset = assessRuleset(ruleset, result, options.reviews);
