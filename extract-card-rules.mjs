@@ -2,7 +2,7 @@ import path from "node:path";
 import { readFile, writeFile, rename, unlink, realpath } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import core from "./schema-3.mjs";
+import core from "./schema-4.mjs";
 import { applyRuleset, assessRuleset, assertDestination, profile, loadReviews } from "./rulesets.mjs";
 import { researchRulings, clearRulingsCache } from "./research-rulings.mjs";
 import { resolveCardInputs } from "./card-lookup.mjs";
@@ -93,11 +93,9 @@ export function translate(lua, utility, source, lookup, options = {}) {
     id: "ygopro-" + source.passcode,
     card: { passcode: source.passcode, name: source.name },
     label: target.passcode === source.passcode ? "Banish this copy; summon another from Deck" : "Banish this copy; summon " + target.name + " from Deck",
-    requires: { sourceZone: "graveyard", ownTurn: true, phases: ["M1", "M2"] },
-    activation: [{ op: "banish", card: "source" }],
-    resolution: [{ op: "special-summon", from: "deck", card: { passcode: target.passcode, name: target.name }, positions: ["ATK", "DEF"] }]
+    action: core.banishSummonAction({ card: { passcode: target.passcode, name: target.name }, positions: ["ATK", "DEF"] })
   };
-  core.validateAutomationList({ schemaVersion: 3, id: "extracted", name: "Extracted", version: "1.0.0", formats: ["er", "eu"], rules: [rule] });
+  core.validateAutomationList({ schemaVersion: 4, id: "extracted", name: "Extracted", version: "1.0.0", formats: ["er", "eu"], rules: [rule] });
   return rule;
 }
 
@@ -141,7 +139,7 @@ export async function extractCards(ids, simulator = defaultSimulator, ruleset = 
           const utility = await readFile(path.join(root, "script", "utility.lua"), "utf8");
           result.utilitySha256 = createHash("sha256").update(utility).digest("hex");
           result.rule = translate(result.lua, utility, result, lookup, { resolveSetCards });
-          if (result.rule.resolution[0].op === "choose-search-or-destroy") {
+          if (result.rule.action.timing.kind === "optional-trigger") {
             result.simulatorAnalysis = { adapter: "summon-trigger-search-or-destroy", archetypeMembership: "Printed-card snapshot from the selected cards.cdb",
               manualResponsibilities: ["Confirm a legal optional summon-trigger window, including missed timing and the Damage Step.",
                 "Adjudicate IsAbleToHand, effect negation, changed names/types/archetypes, destruction protection and replacement effects manually.",
@@ -152,6 +150,7 @@ export async function extractCards(ids, simulator = defaultSimulator, ruleset = 
         result.ruleset = assessRuleset(ruleset, result, options.reviews);
         if (!result.ruleset.writeAllowed) throw new Error(result.ruleset.reason);
         if (!result.rule) throw new Error(result.simulatorReason || "No translatable behavior or historical reconstruction is available");
+        core.validateAutomationAction(result.rule.action);
         result.status = "supported";
       } catch (error) { result.reason = error.message; }
       if (result.name && (options.research ?? ruleset === "edison")) {

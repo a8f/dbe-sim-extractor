@@ -1,4 +1,4 @@
-import core from "./schema-3.mjs";
+import core from "./schema-4.mjs";
 
 // Recognize the complete effect family, not a bag of interesting Lua calls.
 // Identities and archetype membership are supplied by the selected database.
@@ -128,10 +128,9 @@ export function translateSummonChoice(input, source, { tokenize, resolveSetCards
   const rule = {
     id: "ygopro-" + source.passcode, card: { passcode: source.passcode, name: source.name },
     label: "On summon: search a monster or destroy Spells/Traps",
-    requires: { sourceZone: "monster", ownTurn: false, phases: ["DP", "SP", "M1", "BP", "M2", "EP"], trigger: "normal-or-special-summon" },
-    activation: [], resolution: [{ op: "choose-search-or-destroy", monsterCards: cards, destructionMinimum: minimum, searchAbsentFaceUpCards: [] }]
+    action: core.summonChoiceAction({ monsterCards: cards, destructionMinimum: minimum })
   };
-  core.validateAutomationList({ schemaVersion: 3, id: "extracted", name: "Extracted", version: "1.0.0", formats: ["so"], rules: [rule] });
+  core.validateAutomationList({ schemaVersion: 4, id: "extracted", name: "Extracted", version: "1.0.0", formats: ["so"], rules: [rule] });
   return rule;
 }
 

@@ -1,8 +1,31 @@
 # Dueling Book Enhancer simulator extractor
 
 Optional development tool for extracting local YGOPRO behavior into data-only
-schema-3 Dueling Book Enhancer rules. Requires **Node.js 22.13+** and no npm
+schema-4 Dueling Book Enhancer rules. Requires **Node.js 22.13+** and no npm
 packages. The extension does not need this repository to build, test or run.
+
+Each generated entry separates `id`, `card`, and `label` metadata from a nested
+`action` using action schema 2. `result.rule.action` is the per-card behavior
+contract; written lists use list schema 4. Extraction/research reports and review
+sidecars are separate diagnostic formats, not importable rule lists. Older flat
+schema-3 lists must be converted before writing.
+
+Action schema 2 separates source/timing, named filters, activation checks/choices/
+costs/targets, resolution operations, and structured manual coverage. Search and
+destruction are separate operations under a branch referencing an activation
+choice. Destruction expresses game intent; the extension's native movements do
+not implement protection, replacements or simultaneous consequences. Only the
+two supported complete compositions are accepted. Action schema 1 is rejected.
+The current extractor still recognizes one logical effect per source pattern;
+merging into several custom effects requires an explicit manual merge.
+
+The machine-readable contracts are in `schemas/`. `schema-4.mjs` validates an
+action independently with `validateAutomationAction`, or a complete list with
+`validateAutomationList`/`importAutomationList`. Both schemas and the validator
+are vendored from the extension. In an extension development checkout, run
+`node scripts/sync-automation-contracts.mjs` at its root after contract changes;
+`--check` detects drift. This repository requires neither that checkout nor
+network access to validate output.
 
 ## Repository boundary
 
@@ -186,12 +209,12 @@ concurrent-edit check. The extractor does not publish Git changes or install lis
 node --test checks/*.check.mjs
 
 # Optional compatibility against an extension checkout
-$env:DBX_EXTENSION_DIR = "C:\path\to\Dueling-Book-Enhancer"
+$env:DBX_EXTENSION_DIR = "C:\path\to\Dueling-Book-Enhancer\extension\shared"
 node --test checks/*.check.mjs
 ```
 
 The checks use mocked HTTP and synthetic temporary SQLite/review data, so they
-need neither the simulator nor the card-rules repository. `schema-3.mjs` vendors
+need neither the simulator nor the card-rules repository. `schema-4.mjs` vendors
 the extension contract to keep this repository independent. Reload the extension
 after adapter changes before using new JSON fields; later list edits can flow
 through the local watcher.

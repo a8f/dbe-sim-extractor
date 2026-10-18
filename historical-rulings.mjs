@@ -1,4 +1,4 @@
-import core from "./schema-3.mjs";
+import core from "./schema-4.mjs";
 
 // Compile sourced, reviewed facts into the generic action vocabulary. Facts are
 // independent of the installed script: modern errata need not match old Lua.
@@ -15,15 +15,9 @@ export function compileHistoricalRule(source, review) {
       id: "ygopro-" + source.passcode,
       card: { passcode: source.passcode, name: review.name },
       label: "On summon: search a monster or destroy Spells/Traps",
-      requires: { sourceZone: "monster", ownTurn: false, phases: ["DP", "SP", "M1", "BP", "M2", "EP"], trigger: "normal-or-special-summon" },
-      activation: [],
-      resolution: [{ op: "choose-search-or-destroy",
-        ...(effect.monsterNamePrefixes !== undefined ? { monsterNamePrefixes: structuredClone(effect.monsterNamePrefixes) } : {}),
-        ...(effect.monsterCards !== undefined ? { monsterCards: structuredClone(effect.monsterCards) } : {}),
-        ...(effect.destructionMinimum !== undefined ? { destructionMinimum: effect.destructionMinimum } : {}),
-        searchAbsentFaceUpCards: structuredClone(effect.searchAbsentFaceUpCards) }]
+      action: core.summonChoiceAction(effect)
     };
-    core.validateAutomationList({ schemaVersion: 3, id: "historical", name: "Historical", version: "1.0.0", formats: ["er", "eu"], rules: [rule] });
+    core.validateAutomationList({ schemaVersion: 4, id: "historical", name: "Historical", version: "1.0.0", formats: ["er", "eu"], rules: [rule] });
     return rule;
   }
   if (effect?.kind !== "graveyard-ignition-banish-summon-from-deck") throw new Error("Historical effect needs a supported generic adapter: " + effect?.kind);
@@ -32,30 +26,30 @@ export function compileHistoricalRule(source, review) {
     id: "ygopro-" + source.passcode,
     card: { passcode: source.passcode, name: review.name },
     label: "Banish this copy; summon " + (effect.summon.passcode === source.passcode ? "another" : effect.summon.name) + " from Deck",
-    requires: { sourceZone: "graveyard", ownTurn: true, phases: ["M1", "M2"] },
-    activation: [{ op: "banish", card: "source" }],
-    resolution: [{ op: "special-summon", from: "deck", card: structuredClone(effect.summon), positions: [...effect.positions] }]
+    action: core.banishSummonAction({ card: structuredClone(effect.summon), positions: [...effect.positions] })
   };
   for (const correction of review.corrections || []) {
     if (correction.kind === "activation-prohibition") {
       if (Object.keys(correction).some(key => !["kind", "card", "summary"].includes(key))) throw new Error("Historical prohibition has unsupported fields");
-      (rule.requires.absentFaceUpCards ||= []).push(structuredClone(correction.card));
+      if (!rule.action.activation.checks.length) rule.action.activation.checks.push({ check: "absent-face-up", cards: [] });
+      rule.action.activation.checks[0].cards.push(structuredClone(correction.card));
     } else if (correction.kind === "no-monster-zone-destroy-deck-copy") {
       if (Object.keys(correction).some(key => !["kind", "summary"].includes(key))) throw new Error("Historical no-zone correction has unsupported fields");
-      rule.resolution[0].onNoMonsterZone = "destroy-to-graveyard";
+      rule.action.resolution[0].onNoMonsterZone = { op: "destroy", reason: "effect" };
     } else throw new Error("Historical correction needs a supported generic adapter: " + correction.kind);
   }
-  core.validateAutomationList({ schemaVersion: 3, id: "historical", name: "Historical", version: "1.0.0", formats: ["er", "eu"], rules: [rule] });
+  core.validateAutomationList({ schemaVersion: 4, id: "historical", name: "Historical", version: "1.0.0", formats: ["er", "eu"], rules: [rule] });
   return rule;
 }
 
 export function describeAdaptation(simulatorRule, historicalRule, review) {
   const changes = (review.corrections || []).map(correction => correction.summary);
-  const installed = simulatorRule?.resolution[0], historical = historicalRule.resolution[0];
-  if (installed?.op === "choose-search-or-destroy" && historical.op === installed.op) {
-    if ((installed.destructionMinimum || 0) !== (historical.destructionMinimum || 0)) changes.push("Historical review changes the destruction selection minimum from " + (installed.destructionMinimum || 0) + " to " + (historical.destructionMinimum || 0) + ".");
-    if (JSON.stringify(installed.monsterCards) !== JSON.stringify(historical.monsterCards) || JSON.stringify(installed.monsterNamePrefixes) !== JSON.stringify(historical.monsterNamePrefixes)) changes.push("Use the historically reviewed monster selector instead of the simulator archetype snapshot.");
-    if (JSON.stringify(installed.searchAbsentFaceUpCards) !== JSON.stringify(historical.searchAbsentFaceUpCards)) changes.push("Apply historically reviewed face-up search prohibitions.");
+  if (simulatorRule?.action.timing.kind === "optional-trigger" && historicalRule.action.timing.kind === "optional-trigger") {
+    const installed = simulatorRule.action, historical = historicalRule.action;
+    const before = installed.resolution[0].cases, after = historical.resolution[0].cases;
+    if (before.destroy[0].selection.minimum !== after.destroy[0].selection.minimum) changes.push("Historical review changes the destruction selection minimum from " + before.destroy[0].selection.minimum + " to " + after.destroy[0].selection.minimum + ".");
+    if (JSON.stringify(installed.filters) !== JSON.stringify(historical.filters)) changes.push("Use the historically reviewed monster selector instead of the simulator archetype snapshot.");
+    if (JSON.stringify(before.search[0].checks) !== JSON.stringify(after.search[0].checks)) changes.push("Apply historically reviewed face-up search prohibitions.");
   }
   return {
     mode: simulatorRule ? "rulings-correction" : "rulings-reconstruction",

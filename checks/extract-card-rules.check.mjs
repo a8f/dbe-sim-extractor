@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { passcode, translate, extractCards as extractImpl, mergeRules as mergeImpl, writeRules as writeImpl } from "../extract-card-rules.mjs";
-import core from "../schema-3.mjs";
+import core from "../schema-4.mjs";
 import { profile, assessRuleset, assertDestination, applyRuleset, loadReviews } from "../rulesets.mjs";
 import { compileHistoricalRule } from "../historical-rulings.mjs";
 import { researchRulings } from "../research-rulings.mjs";
@@ -25,7 +25,7 @@ const source = { passcode: "09000001", name: "Example Recruiter" };
 const lookup = id => ({ passcode: id, name: id === source.passcode ? source.name : "Example Target" });
 const translateFixture = (script = lua, helper = utility) => translate(script, helper, source, lookup);
 const supported = () => ({ passcode: source.passcode, status: "supported", rule: translateFixture() });
-const list = () => ({ schemaVersion: 3, id: "test.edison", name: "Test Edison", version: "1.0.0", formats: ["ar", "au"], rules: [{ ...translateFixture(), id: "existing-recruiter" }] });
+const list = () => ({ schemaVersion: 4, id: "test.edison", name: "Test Edison", version: "1.0.0", formats: ["ar", "au"], rules: [{ ...translateFixture(), id: "existing-recruiter" }] });
 
 function reviewFixture() {
   return { status: "approved", name: source.name, reviewedOn: "2026-10-17", sources: ["https://example.test/historical"],
@@ -40,12 +40,12 @@ test("external summon-choice review compiles generically, passes schema, and is 
     effect: { kind: "summon-trigger-search-or-destroy", monsterNamePrefixes: ["Example Family "],
       searchAbsentFaceUpCards: [{ passcode: "09000009", name: "Example Blocker" }] } };
   const rule = compileHistoricalRule(source, review);
-  assert.equal(rule.requires.sourceZone, "monster"); assert.equal(rule.requires.ownTurn, false);
-  assert.deepEqual(rule.activation, []); assert.equal(rule.resolution[0].op, "choose-search-or-destroy");
+  assert.equal(rule.action.source.zone, "monster"); assert.equal(rule.action.timing.turn, "either");
+  assert.deepEqual(rule.action.activation.costs, []); assert.equal(rule.action.resolution[0].op, "branch");
   const result = { ...source, status: "supported", rule };
   const destination = { ...list(), formats: ["er", "eu"] };
   assert.doesNotThrow(() => mergeRules(destination, [result], "edison", { [source.passcode]: review }));
-  result.rule.resolution[0].monsterNamePrefixes.push("Unreviewed ");
+  result.rule.action.filters.monsters.namePrefixes.push("Unreviewed ");
   assert.throws(() => mergeRules(destination, [result], "edison", { [source.passcode]: review }), /does not match/);
   for (const patch of [{ extra: true }, { monsterNamePrefixes: [] }, { monsterNamePrefixes: ["Without boundary"] }]) {
     assert.throws(() => compileHistoricalRule(source, { ...review, effect: { ...review.effect, ...patch } }));
@@ -68,9 +68,10 @@ test("passcodes retain zeroes; invalid IDs cannot become script paths", () => {
 test("full script translation derives selectors and matches the runtime contract", () => {
   const rule = translateFixture();
   assert.deepEqual(rule.card, source);
-  assert.deepEqual(rule.requires, { sourceZone: "graveyard", ownTurn: true, phases: ["M1", "M2"] });
-  assert.deepEqual(rule.activation, [{ op: "banish", card: "source" }]);
-  assert.deepEqual(rule.resolution, [{ op: "special-summon", from: "deck", card: { passcode: "09000002", name: "Example Target" }, positions: ["ATK", "DEF"] }]);
+  assert.deepEqual(rule.action.source, { zone: "graveyard", player: "self" });
+  assert.deepEqual(rule.action.timing, { kind: "ignition", turn: "self", phases: ["M1", "M2"], verification: "manual" });
+  assert.deepEqual(rule.action.activation.costs, [{ op: "banish", card: "source", reason: "cost" }]);
+  assert.deepEqual(rule.action.resolution, [{ op: "special-summon", from: "deck", card: { passcode: "09000002", name: "Example Target" }, position: { choice: "position" }, reason: "effect" }]);
   assert.doesNotThrow(() => core.validateAutomationList(list()));
   assert.deepEqual(translateFixture("--[=[ ignored fake SetCountLimit(1) ]=]\n" + lua.replaceAll("\n", "\n\t")), rule);
 });
@@ -219,10 +220,10 @@ test("ruleset is enforced at the write boundary and cannot be spoofed by report 
   assert.match(review.reason, /does not match/);
   applyRuleset("edison", candidate, reviews);
   assert.equal(assessRuleset("edison", candidate, reviews).writeAllowed, true);
-  assert.ok(candidate.rule.requires.absentFaceUpCards.some(card => card.name === "Example Prohibition"));
-  assert.equal(candidate.rule.resolution[0].onNoMonsterZone, "destroy-to-graveyard");
+  assert.ok(candidate.rule.action.activation.checks[0].cards.some(card => card.name === "Example Prohibition"));
+  assert.deepEqual(candidate.rule.action.resolution[0].onNoMonsterZone, { op: "destroy", reason: "effect" });
   assert.doesNotThrow(() => mergeRules(historical, [candidate], "edison", reviews));
-  candidate.rule.resolution[0].onNoMonsterZone = undefined;
+  candidate.rule.action.resolution[0].onNoMonsterZone = undefined;
   assert.throws(() => mergeRules(historical, [candidate], "edison", reviews), /does not match/);
 });
 
@@ -233,9 +234,9 @@ test("sourced historical compilation is generic and never silently skips unknown
       { kind: "no-monster-zone-destroy-deck-copy" }] };
   const rule = compileHistoricalRule(source, review);
   assert.equal(rule.card.passcode, "09000001");
-  assert.equal(rule.resolution[0].card.passcode, "09000002");
-  assert.deepEqual(rule.resolution[0].positions, ["DEF"]);
-  assert.equal(rule.requires.absentFaceUpCards[0].passcode, "09000004");
+  assert.equal(rule.action.resolution[0].card.passcode, "09000002");
+  assert.deepEqual(rule.action.activation.choices[0].options, ["DEF"]);
+  assert.equal(rule.action.activation.checks[0].cards[0].passcode, "09000004");
   assert.throws(() => compileHistoricalRule(source, { ...review, corrections: [{ kind: "unimplemented-replacement" }] }), /generic adapter/);
   assert.throws(() => compileHistoricalRule(source, { ...review, effect: { ...review.effect, extraRestriction: true } }), /unsupported fields/);
   assert.throws(() => compileHistoricalRule(source, { ...review, sources: [] }), /sources/);
@@ -267,8 +268,8 @@ test("historical reconstruction survives incompatible modern Lua and writes corr
   assert.equal((await writeRules(filename, [historical], "edison", reviews)).changed, true);
   const saved = core.importAutomationList(await readFile(filename, "utf8"));
   assert.equal(saved.rules.length, 1);
-  assert.equal(saved.rules[0].requires.absentFaceUpCards[0].passcode, "09000004");
-  assert.equal(saved.rules[0].resolution[0].onNoMonsterZone, "destroy-to-graveyard");
+  assert.equal(saved.rules[0].action.activation.checks[0].cards[0].passcode, "09000004");
+  assert.deepEqual(saved.rules[0].action.resolution[0].onNoMonsterZone, { op: "destroy", reason: "effect" });
   assert.equal((await writeRules(filename, [historical], "edison", reviews)).changed, false);
   const reviewFile = path.join(dir, "edison.reviews.json");
   await writeFile(reviewFile, JSON.stringify({ schemaVersion: 1, ruleset: "edison", cards: reviews }));
