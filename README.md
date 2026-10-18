@@ -5,7 +5,7 @@ schema-4 Dueling Book Enhancer rules. Requires **Node.js 22.13+** and no npm
 packages. The extension does not need this repository to build, test or run.
 
 Each generated entry separates `id`, `card`, and `label` metadata from a nested
-`action` using action schema 2. `result.rule.action` is the per-card behavior
+`action` using composable action schema 3. `result.rule.action` is the per-card behavior
 contract; written lists use list schema 4. Extraction/research reports and review
 sidecars are separate diagnostic formats, not importable rule lists. Older flat
 schema-3 lists must be converted before writing.
@@ -15,7 +15,7 @@ costs/targets, resolution operations, and structured manual coverage. Search and
 destruction are separate operations under a branch referencing an activation
 choice. Destruction expresses game intent; the extension's native movements do
 not implement protection, replacements or simultaneous consequences. Only the
-two supported complete compositions are accepted. Action schema 1 is rejected.
+three supported complete compositions are accepted. Action schema 1 is rejected.
 The current extractor still recognizes one logical effect per source pattern;
 merging into several custom effects requires an explicit manual merge.
 
@@ -116,11 +116,53 @@ output filename with `.json` replaced by `.reviews.json` in the same directory.
 Missing mappings produce diagnostics and research suggestions instead of being
 silently approved. Malformed or mismatched review documents stop before writing.
 
+### Per-effect coverage
+
+An action passing schema validation proves that its exported pipeline has an
+implemented adapter. It does not prove that all effects on the source card were
+exported. Reviews may supply an `effectInventory` with:
+
+* `textSha256`: SHA-256 of the exact reviewed `cards.cdb` description string.
+* Optional `scriptSha256`: SHA-256 of the exact reviewed Lua file bytes.
+* `effects`: the reviewed inventory of distinct effects and summon procedures.
+  Each entry has a unique `id`, a descriptive `label` and `status`. An
+  `implemented` entry has `kind` matching the compiled review's `effect.kind`;
+  an `unsupported` entry has a `reason` explaining the missing implementation.
+
+The current compiler exports one effect per card, so an inventory must identify
+exactly one implemented entry. That entry still passes action/schema and
+historical write-boundary validation. The inventory is diagnostic review data;
+it is not added to portable executable rule lists.
+
+Extraction reports include `effectCoverage`: `complete` when all inventoried
+effects are exported, `partial` when known effects are unsupported, or
+`unverified` when the inventory is absent or its source fingerprints differ.
+Known omissions generate warnings even if sources have changed. `complete`
+describes effect representation; the action's assisted/manual coverage still
+applies to timing, negation and other adjudication.
+
+Inventories require semantic review. Counting Lua registrations or splitting
+card text cannot reliably distinguish separate effects, alternatives, clones
+and summon procedures. Missing inventories therefore never imply full support.
+The personal import helper prints this assessment and each missing effect on
+every run, including unchanged imports and dry runs. Warnings allow importing
+the supported effect and leave the command successful; invalid mappings still
+fail. JSON reports and text diagnostics retain the same warnings.
+
 The generic effect vocabulary currently supports a graveyard ignition self-banish
 cost followed by a Deck summon with independent source/target selectors and ATK/DEF
 choices. Corrections cover face-up activation prohibitions and destruction of a
 Deck copy if no monster zone remains at resolution. Historical compilation can
 correct or reconstruct the effect independently of incompatible modern Lua.
+
+It also supports scoped `field-ignition-discard-send-from-deck` reviews with
+an `attribute` (one of DARK, LIGHT, EARTH, WATER, FIRE, WIND, DIVINE). These export
+only a face-up monster's own Main Phase, per-copy once-per-turn ignition effect:
+discard one matching hand monster as cost, then select one matching Deck monster
+to send to the Graveyard at resolution. Other effects on that card remain manual.
+No Lua translation of an unrelated effect is claimed. The runtime provides
+explicit confirmation and replacement-destination controls; prior usage, changed
+properties, replacements, chains and negation remain manually adjudicated.
 
 It also supports `summon-trigger-search-or-destroy`: a manually timed
 Normal/Special Summon trigger with no cost, a choice at activation, and either

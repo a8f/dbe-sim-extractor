@@ -13,5 +13,5 @@
 *.json
 !/package.json
 !/rulesets/*.json
-!/schemas/card-action-v2.schema.json
+!/schemas/card-action-v3.schema.json
 !/schemas/card-rule-list-v4.schema.json

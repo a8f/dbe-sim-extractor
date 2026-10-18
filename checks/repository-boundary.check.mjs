@@ -15,7 +15,7 @@ test("extractor tracks no actual card mappings, downloaded sources or generated 
     if (!file.startsWith("checks/")) assert.ok((text.match(/\b\d{7,8}\b/g) || []).every(value => /^0+$/.test(value)), "Literal card identifier outside synthetic fixtures: " + file);
     if (file.endsWith(".json")) {
       assert.ok(file === "package.json" || /^rulesets\/[a-z0-9-]+\.json$/.test(file) ||
-        /^schemas\/card-(action-v2|rule-list-v4)\.schema\.json$/.test(file), "Non-contract/format JSON tracked: " + file);
+        /^schemas\/card-(action-v3|rule-list-v4)\.schema\.json$/.test(file), "Non-contract/format JSON tracked: " + file);
       if (file.startsWith("rulesets/")) assert.equal(Object.hasOwn(JSON.parse(text), "cards"), false, "Format profile must not embed card mappings");
     }
   }

@@ -1,4 +1,5 @@
 import core from "./schema-4.mjs";
+import { validateEffectInventory } from "./effect-coverage.mjs";
 
 // Compile sourced, reviewed facts into the generic action vocabulary. Facts are
 // independent of the installed script: modern errata need not match old Lua.
@@ -6,7 +7,18 @@ export function compileHistoricalRule(source, review) {
   if (review.status !== "approved" || !review.sources?.length || !review.reviewedOn || source.name !== review.name) {
     throw new Error("Historical mapping is missing its review, sources or matching card identity");
   }
+  validateEffectInventory(review);
   const effect = review.effect;
+  if (effect?.kind === "field-ignition-discard-send-from-deck") {
+    if (Object.keys(effect).some(key => !["kind", "attribute"].includes(key)) || review.corrections?.length) {
+      throw new Error("Historical discard/send effect has unsupported fields or corrections");
+    }
+    const rule = { id: "ygopro-" + source.passcode, card: { passcode: source.passcode, name: review.name },
+      label: "Discard 1 " + effect.attribute + " monster; send 1 from Deck to Graveyard",
+      action: core.discardSendAction({ attribute: effect.attribute }) };
+    core.validateAutomationList({ schemaVersion: 4, id: "historical", name: "Historical", version: "1.0.0", formats: ["er", "eu"], rules: [rule] });
+    return rule;
+  }
   if (effect?.kind === "summon-trigger-search-or-destroy") {
     if (Object.keys(effect).some(key => !["kind", "monsterNamePrefixes", "monsterCards", "destructionMinimum", "searchAbsentFaceUpCards"].includes(key)) || review.corrections?.length) {
       throw new Error("Historical choice effect has unsupported fields or corrections");

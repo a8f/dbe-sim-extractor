@@ -35,6 +35,22 @@ function reviewFixture() {
     manualResponsibilities: ["Example timing remains manual"] };
 }
 
+test("scoped discard/send review compiles only its ignition effect and is rechecked before writing", () => {
+  const review = { status: "approved", name: source.name, reviewedOn: "2026-10-17", sources: ["https://example.test/historical"],
+    effect: { kind: "field-ignition-discard-send-from-deck", attribute: "DARK" } };
+  const rule = compileHistoricalRule(source, review);
+  assert.deepEqual(rule.action, core.discardSendAction({ attribute: "DARK" }));
+  const reviews = { [source.passcode]: review }, result = { ...source, status: "supported", rule };
+  const destination = { ...list(), formats: ["er", "eu"] };
+  const merged = mergeRules(destination, [result], "edison", reviews);
+  assert.equal(merged.rules.length, 1);
+  assert.deepEqual(mergeRules(merged, [result], "edison", reviews), merged);
+  result.rule.action.filters.monsters.attribute = "LIGHT";
+  assert.throws(() => mergeRules(destination, [result], "edison", reviews), /does not match/);
+  for (const patch of [{ attribute: "invalid" }, { extra: true }]) assert.throws(() => compileHistoricalRule(source, { ...review, effect: { ...review.effect, ...patch } }));
+  assert.throws(() => compileHistoricalRule(source, { ...review, corrections: reviewFixture().corrections }), /unsupported/);
+});
+
 test("external summon-choice review compiles generically, passes schema, and is rechecked at merge", () => {
   const review = { status: "approved", name: source.name, reviewedOn: "2026-10-17", sources: ["https://example.test/historical"],
     effect: { kind: "summon-trigger-search-or-destroy", monsterNamePrefixes: ["Example Family "],

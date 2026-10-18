@@ -7,6 +7,7 @@ import { applyRuleset, assessRuleset, assertDestination, profile, loadReviews } 
 import { researchRulings, clearRulingsCache } from "./research-rulings.mjs";
 import { resolveCardInputs } from "./card-lookup.mjs";
 import { translateSummonChoice, matchesSetcode } from "./translate-summon-choice.mjs";
+import { assessEffectCoverage } from "./effect-coverage.mjs";
 
 export const defaultSimulator = "C:\\Yu-Gi-Oh! The Dawn of a New Era\\YGOPRO";
 
@@ -153,6 +154,8 @@ export async function extractCards(ids, simulator = defaultSimulator, ruleset = 
         core.validateAutomationAction(result.rule.action);
         result.status = "supported";
       } catch (error) { result.reason = error.message; }
+      try { result.effectCoverage = assessEffectCoverage(result, ruleset === "edison" ? options.reviews?.[id] : undefined); }
+      catch (error) { result.effectCoverage = { status: "unverified", effects: [], warnings: [error.message] }; }
       if (result.name && (options.research ?? ruleset === "edison")) {
         result.research = await researchRulings(result, options.fetchImpl, {
           cacheDirectory: options.cacheDirectory, refresh: options.refreshRulings
